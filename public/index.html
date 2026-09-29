@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generador de Tarjeta de Seguridad Química - SGA/GHS</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- PDF.js for reading uploaded SDS PDFs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <!-- html2canvas & jsPDF for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <script src="./assets/js/tailwind-config.js"></script>
+
+  <link rel="stylesheet" href="./assets/css/styles.css">
+
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col antialiased selection:bg-red-500 selection:text-white">
+
+  <!-- Full-screen Loading Overlay -->
+  <div id="fullscreen-loader" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[9999] hidden flex flex-col items-center justify-center p-4 transition-all duration-300 select-none">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 max-w-md w-full text-center border border-slate-100 flex flex-col items-center space-y-4 animate-in fade-in zoom-in duration-200">
+      <div class="relative w-16 h-16 flex items-center justify-center">
+        <div class="absolute inset-0 rounded-full border-4 border-red-100"></div>
+        <div class="absolute inset-0 rounded-full border-4 border-red-600 border-t-transparent animate-spin"></div>
+        <i class="fa-solid fa-flask-vial text-red-600 text-xl"></i>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-slate-900" id="loader-title">Procesando Documento</h3>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed" id="loader-subtitle">Analizando estructura SGA/GHS con Inteligencia Artificial...</p>
+      </div>
+      <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+        <div class="bg-red-600 h-full w-full rounded-full animate-pulse"></div>
+      </div>
+    </div>
+  </div>
+
+<!-- Mobile Tab View Switcher (Visible on Mobile/Tablets) -->
+  <div class="lg:hidden bg-white border-b border-slate-200 px-4 py-2 sticky top-0 z-30 flex gap-2">
+    <button id="tab-btn-edit" onclick="switchMobileTab('edit')" class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition text-center bg-slate-900 text-white shadow-sm flex items-center justify-center gap-2">
+      <i class="fa-solid fa-pen-to-square"></i>
+      <span>1. Editar Datos</span>
+    </button>
+    <button id="tab-btn-preview" onclick="switchMobileTab('preview')" class="flex-1 py-2 px-3 rounded-lg text-xs font-bold transition text-center bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center gap-2">
+      <i class="fa-solid fa-eye"></i>
+      <span>2. Visualizar PDF</span>
+    </button>
+  </div>
+
+  <!-- Main Grid Container occupying maximum available width -->
+  <main id="workspace" class="flex-1 max-w-[1800px] w-full mx-auto p-3 sm:p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-start">
+
+    <!-- LEFT COLUMN: CONTROLS & FORM (5 cols on lg, 4 cols on xl) -->
+    <section id="col-form" class="lg:col-span-5 xl:col-span-4 space-y-4">
+
+      <!-- Upload Box -->
+      <div class="bg-white border border-slate-200 shadow-sm rounded-xl p-3.5 sm:p-4">
+        <div class="flex items-center justify-between mb-2.5">
+          <label class="text-xs font-bold text-slate-800 flex items-center gap-2">
+            <span class="bg-red-100 text-red-700 w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-black">1</span>
+            <span>Cargar FDS / SDS (PDF o Texto)</span>
+          </label>
+          <span id="file-info" class="hidden text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono font-semibold truncate max-w-[160px]"></span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2">
+          <div 
+            id="drop-zone"
+            onclick="document.getElementById('pdf-file-input').click()"
+            class="flex-1 border-2 border-dashed border-slate-300 hover:border-red-500 bg-slate-50/70 hover:bg-red-50/20 rounded-lg p-2.5 text-center cursor-pointer transition flex items-center justify-center gap-2 group"
+          >
+            <input type="file" id="pdf-file-input" accept=".pdf,.txt,.png,.jpg,.jpeg" class="hidden" onchange="handleFileSelect(event)">
+            <i class="fa-solid fa-cloud-arrow-up text-slate-400 group-hover:text-red-600 text-base transition-colors"></i>
+            <span class="text-xs text-slate-600 group-hover:text-slate-900 font-medium">Seleccionar o arrastrar PDF</span>
+          </div>
+
+          <button 
+            id="btn-process-ai"
+            onclick="processFDSWithAI()"
+            class="bg-slate-900 hover:bg-black text-white font-bold px-3.5 py-2.5 rounded-lg text-xs transition flex items-center justify-center gap-2 whitespace-nowrap shadow-sm hover:shadow"
+          >
+            <span>Extraer con IA</span>
+          </button>
+        </div>
+        
+        <div id="ai-status" class="hidden mt-2 text-[11px] text-center py-1.5 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
+          <i class="fa-solid fa-circle-notch fa-spin text-red-600 mr-1.5"></i>
+          <span id="ai-status-text">Procesando archivo...</span>
+        </div>
+      </div>
+
+      <!-- Input Form -->
+      <div class="bg-white border border-slate-200 shadow-sm rounded-xl p-4 sm:p-5 space-y-3.5">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-2.5">
+          <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+            <span class="bg-red-100 text-red-700 w-5 h-5 rounded-full inline-flex items-center justify-center text-[11px] font-black">2</span>
+            <span>Datos del Producto Químico</span>
+          </h2>
+          <button type="button" onclick="resetForm()" class="text-[11px] text-slate-400 hover:text-red-600 font-medium transition">
+            <i class="fa-solid fa-rotate-left mr-1"></i>Limpiar
+          </button>
+        </div>
+
+        <!-- Chemical Title & UN -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">Nombre Agente Químico</label>
+            <input type="text" id="input-agente" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-semibold focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">Código UN / Componentes</label>
+            <input type="text" id="input-un" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition">
+          </div>
+        </div>
+
+        <!-- Warning Word & Quantity -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">Palabra de Advertencia</label>
+            <select id="input-palabra" onchange="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-bold focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition">
+              <option value="">-- Seleccionar --</option>
+              <option value="PELIGRO">PELIGRO</option>
+              <option value="ATENCIÓN">ATENCIÓN</option>
+              <option value="SIN PALABRA DE ADVERTENCIA">SIN PALABRA DE ADVERTENCIA</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">Cantidad de Producto</label>
+            <input type="text" id="input-cantidad" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition">
+          </div>
+        </div>
+
+        <!-- GHS Pictogram Selector Matrix -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 mb-1.5">
+            Pictogramas SGA / GHS Oficiales
+          </label>
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200" id="pictogram-selector-grid">
+            <!-- Dynamically populated with SVG GHS pictograms -->
+          </div>
+        </div>
+
+        <!-- Hazard & Precautionary statements -->
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 mb-1">Indicaciones de Peligro (Frases H)</label>
+          <textarea id="input-indicaciones" rows="3" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 leading-relaxed focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold text-slate-700 mb-1">Consejos de Prudencia (Frases P)</label>
+          <textarea id="input-consejos" rows="3" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-900 leading-relaxed focus:bg-white focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition"></textarea>
+        </div>
+
+        <fieldset class="contact-fields"><legend class="text-[11px] font-bold text-slate-700 mb-1">Fabricante y Contacto de Emergencia</legend>
+<div><label for="input-fabricante" class="block text-[11px] font-semibold text-slate-700 mb-1">Nombre del fabricante</label><input type="text" id="input-fabricante" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900"></div>
+<div><label for="input-telefonoFabricante" class="block text-[11px] font-semibold text-slate-700 mb-1">Teléfono del fabricante</label><input type="tel" id="input-telefonoFabricante" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900"></div>
+<div><label for="input-direccionFabricante" class="block text-[11px] font-semibold text-slate-700 mb-1">Dirección</label><input type="text" id="input-direccionFabricante" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900"></div>
+<div><label for="input-telefonoEmergencia" class="block text-[11px] font-semibold text-slate-700 mb-1">Teléfono de emergencia</label><input type="tel" id="input-telefonoEmergencia" oninput="updateCardFromInputs()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-900"></div>
+        </fieldset>
+
+      </div>
+    </section>
+
+    <!-- RIGHT MAIN WORKSPACE: CARD PREVIEW & RESPONSIVE SCALING CONTAINER (7 cols on lg, 8 cols on xl) -->
+    <section id="col-preview" class="hidden lg:block lg:col-span-7 xl:col-span-8 space-y-3 sticky top-18">
+      
+      <!-- Top Control Toolbar -->
+      <div id="preview-toolbar" class="bg-white border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-xs text-slate-800 font-extrabold tracking-tight">Visualizar PDF</span>
+          <span class="hidden md:inline-block text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono">Formato A4 Horizontal</span>
+        </div>
+
+        <button onclick="exportToPDF()" id="btn-export-pdf" class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-file-pdf text-sm"></i>
+          <span>Descargar PDF</span>
+        </button>
+
+        <!-- Zoom & Scale Controls -->
+        <div id="zoom-controls" class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+          <button onclick="setZoomMode('fit')" id="zoom-btn-fit" class="px-2.5 py-1 text-[11px] font-bold rounded transition bg-white text-slate-800 shadow-sm" title="Ajustar automáticamente al ancho de la pantalla">
+            <i class="fa-solid fa-expand mr-1 text-[10px]"></i>Ajustar
+          </button>
+          <button onclick="setZoomMode(1)" id="zoom-btn-1" class="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 rounded transition" title="Ver a tamaño real 100%">
+            100%
+          </button>
+          <div class="h-3 w-px bg-slate-300 mx-0.5"></div>
+          <button onclick="adjustZoom(-0.1)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-600 hover:bg-white rounded transition" title="Disminuir zoom">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+
+          <span id="zoom-level-text" class="text-[11px] font-mono font-bold text-slate-700 min-w-[38px] text-center">100%</span>
+
+          <button onclick="adjustZoom(0.1)" class="w-6 h-6 flex items-center justify-center text-xs font-bold text-slate-600 hover:bg-white rounded transition" title="Aumentar zoom">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <div class="h-3 w-px bg-slate-300 mx-0.5"></div>
+          <button onclick="toggleFullscreenPreview()" class="px-2 py-1 text-xs text-slate-600 hover:text-slate-900 rounded transition" title="Ver en pantalla completa">
+            <i class="fa-solid fa-maximize"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- CANVAS CARD CONTAINER (Auto-Scales gracefully without overflowing screen) -->
+      <div 
+        id="preview-viewport-container" 
+        class="bg-slate-300/60 rounded-2xl border border-slate-300 shadow-inner p-4 min-h-[500px] flex items-center justify-center overflow-hidden relative"
+      >
+        <!-- Scaling Transformation Wrapper -->
+        <div id="card-scale-wrapper" class="flex items-center justify-center">
+          
+          <!-- OFFICIAL SGA/GHS CHEMICAL SAFETY CARD (A4 Ratio: 840px x 594px) -->
+          <div 
+            id="chemical-card-preview" 
+            class="w-[840px] h-[594px] bg-white text-black p-7 font-sans relative border-[8px] border-black shadow-2xl flex flex-col justify-between select-none shrink-0"
+          >
+            <div id="card-content">
+            <!-- TOP SECTION: Chemical Name & UN / Components -->
+            <div class="grid grid-cols-12 gap-4 pb-3.5 border-b-2 border-slate-300 items-center">
+              <div class="col-span-7 flex flex-col justify-center">
+                <span class="text-[10px] uppercase font-bold tracking-widest text-slate-500">AGENTE QUÍMICO</span>
+                <h1 id="card-agente" class="text-2xl font-black text-black tracking-tight leading-tight mt-0.5 break-words min-h-[2rem]">
+                </h1>
+              </div>
+
+              <div class="col-span-5 text-right flex flex-col justify-center border-l-2 border-slate-200 pl-4">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Componentes / Código UN</span>
+                <p id="card-un" class="text-xs font-bold text-slate-900 mt-1 break-words min-h-[1.25rem]">
+                </p>
+              </div>
+            </div>
+
+            <!-- MIDDLE SECTION: Signal Word, Pictograms & Hazard / Precautionary Statements -->
+            <div class="grid grid-cols-12 gap-4 my-auto items-stretch flex-1 py-3">
+              
+              <!-- Middle Left: Signal Word & Pictograms -->
+              <div class="col-span-5 flex flex-col justify-center items-center pr-2">
+                <h2 id="card-palabra" class="text-2xl font-black text-black uppercase tracking-wider mb-2 text-center w-full min-h-[2rem] leading-none">
+                </h2>
+
+                <!-- Cluster of Standard GHS Pictograms -->
+                <div id="card-pictograms-container" class="w-full flex-1 flex flex-wrap items-center justify-center content-center gap-3 py-2 min-h-[190px]">
+                </div>
+              </div>
+
+              <!-- Middle Right: Hazard (H) & Precautionary (P) Statements -->
+              <div class="col-span-7 border-l-2 border-slate-300 pl-5 flex flex-col justify-around space-y-3">
+                <div>
+                  <h3 class="text-base font-black text-red-600 mb-1 leading-tight flex items-center gap-1.5">
+                    <span>Indicaciones de peligro</span>
+                  </h3>
+                  <div id="card-indicaciones" class="text-[12px] font-semibold text-slate-900 leading-relaxed whitespace-pre-line pl-2 border-l-2 border-red-300 min-h-[2.5rem]">
+                  </div>
+                </div>
+
+                <div>
+                  <h3 class="text-base font-black text-red-600 mb-1 leading-tight flex items-center gap-1.5">
+                    <span>Consejos de prudencia</span>
+                  </h3>
+                  <div id="card-consejos" class="text-[12px] font-semibold text-slate-900 leading-relaxed whitespace-pre-line pl-2 border-l-2 border-red-300 min-h-[2.5rem]">
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- BOTTOM SECTION: Manufacturer & Product Quantity -->
+            <div class="grid grid-cols-12 gap-4 pt-3.5 border-t-2 border-slate-300 items-end">
+              <div class="col-span-8">
+                <span class="text-[9.5px] font-black text-slate-500 uppercase tracking-wider block">Fabricante y contacto de emergencia</span>
+<dl class="manufacturer-details"><dt>Nombre del fabricante</dt><dd id="card-fabricante"></dd><dt>Teléfono del fabricante</dt><dd id="card-telefonoFabricante"></dd><dt>Dirección</dt><dd id="card-direccionFabricante"></dd><dt>Teléfono de emergencia</dt><dd id="card-telefonoEmergencia"></dd></dl>
+              </div>
+
+              <div class="col-span-4 text-right">
+                <span class="text-[9.5px] font-black text-slate-500 uppercase tracking-wider block">Cantidad de producto</span>
+                <p id="card-cantidad" class="text-xs font-extrabold text-slate-900 mt-0.5 min-h-[1.25rem]">
+                </p>
+              </div>
+            </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script src="./assets/js/app.js"></script>
+</body>
+</html>
