@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tarjetas-seguridad-quimica-app
+    name: autoficha-sga
     runtime: node
     plan: free
     buildCommand: npm ci --ignore-scripts && npm run build

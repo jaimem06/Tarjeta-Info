@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Generador de Tarjeta de Seguridad Química - SGA/GHS</title>
+  <title>Autoficha SGA</title>
+  <meta name="application-name" content="Autoficha SGA">
   
   <!-- Tailwind CSS -->
   <link rel="stylesheet" href="./assets/css/tailwind.css">
@@ -16,7 +17,8 @@
   <script src="./assets/vendor/jspdf/dist/jspdf.umd.min.js"></script>
   
   <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="./assets/vendor/@fortawesome/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="./assets/vendor/@fortawesome/fontawesome-free/css/fontawesome.min.css">
+  <link rel="stylesheet" href="./assets/vendor/@fortawesome/fontawesome-free/css/solid.min.css">
   
   <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-400.css">
   <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-500.css">
@@ -39,8 +41,8 @@
         <i class="fa-solid fa-flask-vial text-red-600 text-xl"></i>
       </div>
       <div>
-        <h3 class="text-lg font-bold text-slate-900" id="loader-title">Procesando Documento</h3>
-        <p class="text-xs text-slate-500 mt-1 leading-relaxed" id="loader-subtitle">Analizando estructura SGA/GHS con Inteligencia Artificial...</p>
+        <h3 class="text-lg font-bold text-slate-900" id="loader-title">Procesando</h3>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed" id="loader-subtitle">Espera un momento...</p>
       </div>
       <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
         <div class="bg-red-600 h-full w-full rounded-full animate-pulse"></div>
@@ -100,7 +102,7 @@
         <p id="ai-error" role="alert" hidden class="mt-2 text-xs text-red-700 break-words"></p>
         <div id="ai-status" class="hidden mt-2 text-[11px] text-center py-1.5 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
           <i class="fa-solid fa-circle-notch fa-spin text-red-600 mr-1.5"></i>
-          <span id="ai-status-text">Procesando archivo...</span>
+          <span id="ai-status-text">Procesando...</span>
         </div>
       </div>
 
@@ -303,6 +305,10 @@
     </section>
 
   </main>
+
+  <footer class="py-2 text-center text-[10px] text-slate-400">
+    Desarrollado por David Mendoza
+  </footer>
 
   <script src="./assets/js/app.js"></script>
 </body>

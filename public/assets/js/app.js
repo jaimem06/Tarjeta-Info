@@ -263,8 +263,8 @@
         fileInfo.classList.remove('hidden');
       }
 
-      showAIStatus(true, "Cargando FDS...", "Iniciando lectura del documento...");
-      await new Promise(r => setTimeout(r, 100));
+      showAIStatus(true, "Cargando", "Leyendo archivo...");
+      await new Promise(requestAnimationFrame);
 
       try {
         if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -282,8 +282,6 @@
           uploadedFileData = { text: txt, images: [] };
         }
 
-        showAIStatus(true, "Analizando con IA...", "Extrayendo pictogramas, frases H/P y datos químicos...");
-        await new Promise(r => setTimeout(r, 100));
         await processFDSWithAI();
       } catch (err) {
         console.error("Error al leer archivo:", err);
@@ -343,7 +341,7 @@
       try {
         // Read every page before selecting the most relevant visual evidence.
         for (let number = 1; number <= pdf.numPages; number++) {
-          showAIStatus(true, 'Leyendo PDF...', `Extrayendo texto de página ${number} de ${pdf.numPages}...`);
+          showAIStatus(true, 'Leyendo PDF', `Página ${number} de ${pdf.numPages}`);
           const page = await pdf.getPage(number);
           const content = await page.getTextContent();
           let text = '', lastY = null;
@@ -368,7 +366,7 @@
           ...(pictogramPages.length ? [] : pages.slice(0, 2))])];
         const selected = candidates.slice(0, 3).sort((a, b) => a.number - b.number);
         for (const item of selected) {
-          showAIStatus(true, 'Leyendo PDF...', `Preparando imagen de página ${item.number}...`);
+          showAIStatus(true, 'Preparando PDF', `Página ${item.number}`);
           const page = await pdf.getPage(item.number);
           const base = page.getViewport({ scale: 1 });
           const viewport = page.getViewport({ scale: Math.min(2, 1800 / Math.max(base.width, base.height)) });
@@ -439,8 +437,7 @@
         return;
       }
 
-      showAIStatus(true, "Analizando datos con IA...", "Identificando pictogramas SGA, clasificación H/P y datos del producto...");
-      await new Promise(r => setTimeout(r, 50));
+      showAIStatus(true, "Analizando", "Extrayendo datos SGA...");
 
       const documentContext = buildDocumentContext(uploadedFileData);
       const userPromptText = `DOCUMENTO FDS CON PÁGINAS NUMERADAS:\n${documentContext}\n\nContrasta los datos con las imágenes adjuntas. Extrae todos los campos y sus evidencias. ${uploadedFileData.warning || ''}`;
@@ -541,7 +538,7 @@
           };
 
           updateUIFromData();
-          showAIStatus(true, "¡Análisis Completado!", "Generando vista previa de la tarjeta...");
+          showAIStatus(true, "Listo", "Vista previa actualizada.");
           setTimeout(() => showAIStatus(false), 1200);
         } else {
           throw new Error("Sin respuesta estructurada del modelo.");
@@ -981,10 +978,10 @@
           const delay = Math.max(backoff + Math.floor(Math.random() * 1000), err.retryDelay || 0);
           // Leave very long waits to a manual retry instead of blocking the interface.
           if (delay > 60000) throw err;
-          showAIStatus(true, 'OpenRouter no está disponible temporalmente',
-            `Reintentando en ${Math.ceil(delay / 1000)} segundos. Reintentos restantes: ${retries}.`);
+          showAIStatus(true, 'Servicio ocupado',
+            `Nuevo intento en ${Math.ceil(delay / 1000)} s (${retries} restantes).`);
           await new Promise(r => setTimeout(r, delay));
-          showAIStatus(true, 'Analizando datos con IA...', 'Reintentando la solicitud a OpenRouter...');
+          showAIStatus(true, 'Analizando', 'Reintentando...');
           return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
         throw err;

@@ -149,7 +149,7 @@ app.post('/api/extract', rateLimit, async (req, res) => {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'X-OpenRouter-Title': 'Tarjetas de Seguridad Química',
+          'X-OpenRouter-Title': 'Autoficha SGA',
           ...(process.env.PUBLIC_SITE_URL ? { 'HTTP-Referer': process.env.PUBLIC_SITE_URL } : {})
         },
         body: JSON.stringify({
@@ -160,7 +160,7 @@ app.post('/api/extract', rateLimit, async (req, res) => {
           ],
           response_format: {
             type: 'json_schema',
-            json_schema: { name: 'tarjeta_seguridad_quimica', strict: true, schema: extractionSchema }
+            json_schema: { name: 'autoficha_sga', strict: true, schema: extractionSchema }
           },
           temperature: 0,
           max_tokens: 5000

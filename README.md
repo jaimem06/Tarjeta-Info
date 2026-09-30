@@ -1,4 +1,4 @@
-# Tarjetas de Seguridad Química SGA/GHS
+# Autoficha SGA
 
 Aplicación web con frontend estático y un backend Node.js pequeño. El navegador procesa el PDF, selecciona texto e imágenes relevantes y envía ese contenido a `/api/extract`. El backend guarda la clave y consulta OpenRouter.
 
@@ -28,7 +28,7 @@ Abre `http://localhost:10000`. Nunca escribas la clave dentro de `public`.
 
 1. Revoca las claves que anteriormente estuvieron en `public/assets/js/app.js` y crea una clave nueva en OpenRouter.
 2. Sube el proyecto a un repositorio Git privado.
-3. En Render, elige **New > Blueprint** y conecta ese repositorio. Render leerá `render.yaml` y creará el Web Service `tarjetas-seguridad-quimica-app`.
+3. En Render, elige **New > Blueprint** y conecta ese repositorio. Render leerá `render.yaml` y creará el Web Service `autoficha-sga`.
 4. Cuando Render solicite `OPENROUTER_API_KEY`, pega la clave nueva. Marca el valor como secreto.
 5. Espera a que finalice el despliegue y abre `https://TU-SERVICIO.onrender.com/api/health`. Debe responder `{"ok":true,"configured":true}`.
 6. Abre la página principal, carga una FDS de prueba y confirma la extracción.
@@ -41,7 +41,7 @@ Si configuras el servicio manualmente:
 - Health Check Path: `/api/health`
 - Variable secreta: `OPENROUTER_API_KEY`
 
-Render no convierte un Static Site existente en Web Service. Si ya tienes el sitio estático, conserva temporalmente ambos, comprueba la nueva URL y después usa `tarjetas-seguridad-quimica-app` como URL principal. La interfaz debe abrirse desde el Web Service para que `/api/extract` sea del mismo dominio.
+Render no convierte un Static Site existente en Web Service. Si ya tienes el sitio estático, conserva temporalmente ambos, comprueba la nueva URL y después usa `autoficha-sga` como URL principal. La interfaz debe abrirse desde el Web Service para que `/api/extract` sea del mismo dominio.
 
 ## Variables opcionales
 

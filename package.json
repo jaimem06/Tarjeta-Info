@@ -1,5 +1,5 @@
 {
-  "name": "tarjetas-seguridad-quimica",
+  "name": "autoficha-sga",
   "private": true,
   "scripts": {
     "build": "node scripts/copy-vendor.cjs && tailwindcss -c tailwind.config.cjs -i src/tailwind.css -o public/assets/css/tailwind.css --minify",
