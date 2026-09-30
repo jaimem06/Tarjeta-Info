@@ -62,8 +62,9 @@ button, #drop-zone { touch-action: manipulation; }
 #card-top { height: 72px; }
 #card-middle { height: 100%; margin: 0; padding-block: 12px; }
 #card-bottom { height: 108px; }
-#card-statements { min-height: 0; overflow: hidden; }
+#card-statements { min-height: 0; overflow: hidden; justify-content: space-between; }
 #card-statements > div { flex-shrink: 0; }
+#card-statements > div + div { margin-top: 0 !important; }
 #card-agente, #card-un, #card-palabra, #card-indicaciones, #card-consejos,
 #card-cantidad, .manufacturer-details { transition: font-size 0.12s ease, line-height 0.12s ease; }
 .manufacturer-details { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 3px 8px; margin-top: 6px; font-size: 11px; line-height: 1.35; }

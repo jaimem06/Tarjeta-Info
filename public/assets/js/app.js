@@ -604,7 +604,6 @@
     }
 
     function renderCardPreview() {
-      requestAnimationFrame(fitCardContent);
       document.getElementById('card-agente').textContent = currentData.agenteQuimico;
       document.getElementById('card-un').textContent = currentData.codigoUN;
       document.getElementById('card-palabra').textContent = currentData.palabraAdvertencia;
@@ -651,6 +650,11 @@
           }
         });
       }
+
+      // Fit once with the updated text and repeat on the next paint so rapid
+      // typing, web-font rendering and PDF capture all use the same metrics.
+      fitCardContent();
+      requestAnimationFrame(fitCardContent);
     }
 
     function setGroupMetrics(entries, scale, baseLineHeight, minLineHeight) {
@@ -661,14 +665,78 @@
       }
     }
 
-    function shrinkGroupUntilFits(container, entries, options) {
-      let scale = 1;
-      setGroupMetrics(entries, scale, options.lineHeight, options.minLineHeight);
-      while (container.scrollHeight > container.clientHeight + 1 && scale > options.minScale) {
-        scale = Math.max(options.minScale, scale - options.step);
-        setGroupMetrics(entries, scale, options.lineHeight, options.minLineHeight);
+    function getInnerHeight(element) {
+      const styles = getComputedStyle(element);
+      return element.clientHeight
+        - parseFloat(styles.paddingTop || 0)
+        - parseFloat(styles.paddingBottom || 0);
+    }
+
+    // Measures only the real contents. Using container.scrollHeight here is not
+    // reliable because flexbox's justify-content adds empty distributed space.
+    function measureTallestColumn(container) {
+      return Math.max(0, ...Array.from(container.children, child => child.scrollHeight));
+    }
+
+    function measureStatementStack(container) {
+      return Array.from(container.children).reduce((height, child) => {
+        const styles = getComputedStyle(child);
+        return height
+          + child.scrollHeight
+          + parseFloat(styles.marginTop || 0)
+          + parseFloat(styles.marginBottom || 0);
+      }, 0);
+    }
+
+    function fitGroupToContent(container, entries, options) {
+      if (!container || entries.some(entry => !entry.element)) return false;
+
+      const availableHeight = getInnerHeight(container);
+      const measure = options.measure || measureTallestColumn;
+      const fits = () => measure(container) <= availableHeight + 1;
+
+      // Keep the normal, readable size whenever the content already fits.
+      setGroupMetrics(entries, 1, options.lineHeight, options.minLineHeight);
+      const requiredAtBaseSize = measure(container);
+      if (requiredAtBaseSize <= availableHeight + 1) return true;
+
+      // The first reduction follows a non-linear density curve. A binary search
+      // then finds the largest readable size that actually fits in the browser.
+      const densityRatio = Math.max(0.01, availableHeight / requiredAtBaseSize);
+      let candidate = Math.max(
+        options.minScale,
+        Math.min(1, Math.pow(densityRatio, options.densityExponent || 0.78))
+      );
+      setGroupMetrics(entries, candidate, options.lineHeight, options.minLineHeight);
+
+      let low;
+      let high;
+      let best;
+      if (fits()) {
+        low = candidate;
+        high = 1;
+        best = candidate;
+      } else {
+        low = options.minScale;
+        high = candidate;
+        setGroupMetrics(entries, low, options.lineHeight, options.minLineHeight);
+        best = low;
+        if (!fits()) return false;
       }
-      return container.scrollHeight <= container.clientHeight + 1;
+
+      for (let iteration = 0; iteration < 12; iteration += 1) {
+        const middle = (low + high) / 2;
+        setGroupMetrics(entries, middle, options.lineHeight, options.minLineHeight);
+        if (fits()) {
+          best = middle;
+          low = middle;
+        } else {
+          high = middle;
+        }
+      }
+
+      setGroupMetrics(entries, best, options.lineHeight, options.minLineHeight);
+      return true;
     }
 
     // Preserve the A4 margins and section positions; only typography is compressed.
@@ -682,23 +750,28 @@
       const bottom = document.getElementById('card-bottom');
       const manufacturer = document.querySelector('.manufacturer-details');
 
-      shrinkGroupUntilFits(top, [
-        { element: document.getElementById('card-agente'), baseSize: 24, minSize: 7 },
-        { element: document.getElementById('card-un'), baseSize: 12, minSize: 7 }
-      ], { minScale: 0.3, step: 0.025, lineHeight: 1.2, minLineHeight: 1.05 });
+      fitGroupToContent(top, [
+        { element: document.getElementById('card-agente'), baseSize: 24, minSize: 12 },
+        { element: document.getElementById('card-un'), baseSize: 12, minSize: 8 }
+      ], { minScale: 0.5, lineHeight: 1.2, minLineHeight: 1.05 });
 
       const statementText = [
         document.getElementById('card-indicaciones'),
         document.getElementById('card-consejos')
       ];
-      shrinkGroupUntilFits(middle, statementText.map(element =>
-        ({ element, baseSize: 12, minSize: 5.5 })),
-        { minScale: 0.45, step: 0.02, lineHeight: 1.45, minLineHeight: 1.05 });
+      fitGroupToContent(middle, statementText.map(element =>
+        ({ element, baseSize: 12, minSize: 8 })), {
+        minScale: 2 / 3,
+        lineHeight: 1.45,
+        minLineHeight: 1.12,
+        densityExponent: 0.78,
+        measure: measureStatementStack
+      });
 
-      shrinkGroupUntilFits(bottom, [
-        { element: manufacturer, baseSize: 11, minSize: 6 },
-        { element: document.getElementById('card-cantidad'), baseSize: 12, minSize: 6 }
-      ], { minScale: 0.5, step: 0.025, lineHeight: 1.35, minLineHeight: 1.05 });
+      fitGroupToContent(bottom, [
+        { element: manufacturer, baseSize: 11, minSize: 8 },
+        { element: document.getElementById('card-cantidad'), baseSize: 12, minSize: 8 }
+      ], { minScale: 2 / 3, lineHeight: 1.35, minLineHeight: 1.08 });
     }
     window.addEventListener('resize', fitCardContent);
     document.fonts.ready.then(fitCardContent);
