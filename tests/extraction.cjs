@@ -20,4 +20,4 @@ assert(!result.includes('Texto irrelevante'));
 assert(source.includes("const apiUrl = '/api/extract'"));
 assert(!source.includes('sk-or-'));
 assert(require('../server/system-prompt').includes('Los marcadores'));
-console.log('Contexto compacto, marcadores, transporte y modelo gratuito: OK');
+console.log('Contexto compacto, marcadores, transporte y proxy del backend: OK');

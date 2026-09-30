@@ -75,3 +75,5 @@ npm test
 ```
 
 Las pruebas cubren selección compacta del PDF, tratamiento del error 429, validación del backend, modelos, caché y ausencia de claves en la página servida.
+
+La plantilla A4 mantiene márgenes y secciones en posiciones fijas. Cuando el contenido crece, reduce progresivamente el tamaño y el interlineado de cada zona, sin escalar ni desplazar el bloque completo. Las respuestas parciales de la IA se normalizan: campos ausentes o `null` quedan vacíos y se muestran avisos de revisión, en vez de descartar toda la extracción.

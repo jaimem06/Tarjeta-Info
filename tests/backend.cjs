@@ -41,6 +41,8 @@ const app = require('../server');
     assert.deepEqual(upstreamPayload.models, ['google/gemini-2.5-flash-lite', 'openai/gpt-4.1-mini']);
     assert.equal(upstreamPayload.messages[0].role, 'system');
     assert.equal(upstreamPayload.messages[1].role, 'user');
+    assert.equal(upstreamPayload.response_format.type, 'json_schema');
+    assert(upstreamPayload.response_format.json_schema.schema.required.includes('cantidadProducto'));
 
     const second = await localFetch(`${base}/api/extract`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request)

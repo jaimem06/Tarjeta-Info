@@ -4,7 +4,7 @@
   "scripts": {
     "build": "node scripts/copy-vendor.cjs && tailwindcss -c tailwind.config.cjs -i src/tailwind.css -o public/assets/css/tailwind.css --minify",
     "start": "node server.js",
-    "test": "node tests/extraction.cjs && node tests/rate-limit.cjs && node tests/backend.cjs"
+    "test": "node tests/extraction.cjs && node tests/normalization.cjs && node tests/rate-limit.cjs && node tests/backend.cjs"
   },
   "dependencies": {
     "express": "4.21.2"

@@ -468,14 +468,27 @@
         const result = await response.json();
         if (result.error) throw new Error(result.error.message || 'OpenRouter no pudo completar la solicitud.');
         if (result.choices?.[0]?.finish_reason === 'length') throw new Error('La respuesta quedó incompleta. Vuelve a intentar la extracción.');
-        const jsonText = result.choices?.[0]?.message?.content;
+        const responseContent = result.choices?.[0]?.message?.content;
+        const jsonText = Array.isArray(responseContent)
+          ? responseContent.map(part => part?.text || '').join('')
+          : responseContent;
 
         if (jsonText) {
-          const parsed = JSON.parse(jsonText);
+          const parsed = normalizeModelResult(jsonText);
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('El modelo no devolvió una tarjeta válida.');
           const fields = ['agenteQuimico', 'palabraAdvertencia', 'codigoUN', 'indicacionesPeligro', 'consejosPrudencia', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'fabricante', 'cantidadProducto'];
-          if (fields.some(field => typeof parsed[field] !== 'string') || !Array.isArray(parsed.pictogramas)) {
-            throw new Error('La respuesta del modelo no contiene todos los campos en el formato requerido. Vuelve a intentar la extracción.');
+          for (const field of fields) parsed[field] = normalizeTextValue(parsed[field]);
+          if (!parsed.evidencias || typeof parsed.evidencias !== 'object') parsed.evidencias = {};
+          for (const key of ['fabricante', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'cantidadProducto', 'pictogramas']) {
+            const items = Array.isArray(parsed.evidencias[key]) ? parsed.evidencias[key] : [];
+            parsed.evidencias[key] = items.map(item => ({
+              pagina: Number(item?.pagina),
+              cita: normalizeTextValue(item?.cita)
+            })).filter(item => Number.isInteger(item.pagina) && item.pagina > 0 && item.cita);
+          }
+          if (!Array.isArray(parsed.revision)) parsed.revision = parsed.revision ? [String(parsed.revision)] : [];
+          if (!Array.isArray(parsed.pictogramas)) {
+            parsed.pictogramas = String(parsed.pictogramas || '').toUpperCase().match(/GHS0[1-9]/g) || [];
           }
           const validGHS = ["GHS01", "GHS02", "GHS03", "GHS04", "GHS05", "GHS06", "GHS07", "GHS08", "GHS09"];
           const filteredPictos = [...new Set((parsed.pictogramas || []).filter(p => typeof p === 'string' && validGHS.includes(p.toUpperCase())).map(p => p.toUpperCase()))];
@@ -495,15 +508,12 @@
                 if (!evidence.some(item => Number.isInteger(item.pagina) && item.pagina > 0 &&
                     item.pagina <= (uploadedFileData.pages?.length || 1) &&
                     typeof item.cita === 'string' && item.cita.toUpperCase().includes(code))) {
-                  filteredPictos.splice(i, 1);
                   review.push(`${code}: sin evidencia individual; comprueba el pictograma en la sección 2.`);
                 }
               }
             }
             if (!supported) {
-              if (field === 'pictogramas') filteredPictos.length = 0;
-              else parsed[field] = '';
-              review.push(`${label}: sin evidencia verificable; revisa el documento o completa el dato manualmente.`);
+              review.push(`${label}: el modelo no indicó una evidencia verificable; contrasta el dato con el documento.`);
             }
           }
           for (const field of ['fabricante', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'cantidadProducto']) {
@@ -541,6 +551,27 @@
         showAIStatus(false);
         errorBox.textContent = err.message;
         errorBox.hidden = false;
+      }
+    }
+
+    function normalizeTextValue(value) {
+      if (typeof value === 'string') return value.trim();
+      if (typeof value === 'number') return String(value);
+      if (Array.isArray(value)) return value.map(normalizeTextValue).filter(Boolean).join('\n');
+      return '';
+    }
+
+    function normalizeModelResult(value) {
+      if (value && typeof value === 'object') return value;
+      let text = String(value || '').trim();
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      try {
+        return JSON.parse(text);
+      } catch (_error) {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+        throw new Error('La IA respondió, pero no generó un JSON válido. Vuelve a intentar la extracción.');
       }
     }
 
@@ -622,17 +653,52 @@
       }
     }
 
-    // Fit all content without truncating safety statements or contact details.
+    function setGroupMetrics(entries, scale, baseLineHeight, minLineHeight) {
+      const lineHeight = minLineHeight + (baseLineHeight - minLineHeight) * scale;
+      for (const entry of entries) {
+        entry.element.style.fontSize = `${Math.max(entry.minSize, entry.baseSize * scale)}px`;
+        entry.element.style.lineHeight = String(lineHeight);
+      }
+    }
+
+    function shrinkGroupUntilFits(container, entries, options) {
+      let scale = 1;
+      setGroupMetrics(entries, scale, options.lineHeight, options.minLineHeight);
+      while (container.scrollHeight > container.clientHeight + 1 && scale > options.minScale) {
+        scale = Math.max(options.minScale, scale - options.step);
+        setGroupMetrics(entries, scale, options.lineHeight, options.minLineHeight);
+      }
+      return container.scrollHeight <= container.clientHeight + 1;
+    }
+
+    // Preserve the A4 margins and section positions; only typography is compressed.
     function fitCardContent() {
-      const card = document.getElementById('chemical-card-preview');
       const content = document.getElementById('card-content');
-      if (!card.clientHeight) return;
-      const style = getComputedStyle(card);
-      const available = card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      if (!content?.clientHeight) return;
       content.style.transform = 'none';
-      content.style.minHeight = `${available}px`;
-      const height = Math.max(content.scrollHeight, content.offsetHeight);
-      content.style.transform = `scale(${Math.min(1, available / height)})`;
+
+      const top = document.getElementById('card-top');
+      const middle = document.getElementById('card-statements');
+      const bottom = document.getElementById('card-bottom');
+      const manufacturer = document.querySelector('.manufacturer-details');
+
+      shrinkGroupUntilFits(top, [
+        { element: document.getElementById('card-agente'), baseSize: 24, minSize: 7 },
+        { element: document.getElementById('card-un'), baseSize: 12, minSize: 7 }
+      ], { minScale: 0.3, step: 0.025, lineHeight: 1.2, minLineHeight: 1.05 });
+
+      const statementText = [
+        document.getElementById('card-indicaciones'),
+        document.getElementById('card-consejos')
+      ];
+      shrinkGroupUntilFits(middle, statementText.map(element =>
+        ({ element, baseSize: 12, minSize: 5.5 })),
+        { minScale: 0.45, step: 0.02, lineHeight: 1.45, minLineHeight: 1.05 });
+
+      shrinkGroupUntilFits(bottom, [
+        { element: manufacturer, baseSize: 11, minSize: 6 },
+        { element: document.getElementById('card-cantidad'), baseSize: 12, minSize: 6 }
+      ], { minScale: 0.5, step: 0.025, lineHeight: 1.35, minLineHeight: 1.05 });
     }
     window.addEventListener('resize', fitCardContent);
     document.fonts.ready.then(fitCardContent);

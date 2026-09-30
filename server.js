@@ -16,6 +16,48 @@ const requestBuckets = new Map();
 const responseCache = new Map();
 let activeRequests = 0;
 
+const extractionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    agenteQuimico: { type: 'string' },
+    codigoUN: { type: 'string' },
+    palabraAdvertencia: { type: 'string' },
+    indicacionesPeligro: { type: 'string' },
+    consejosPrudencia: { type: 'string' },
+    fabricante: { type: 'string' },
+    telefonoFabricante: { type: 'string' },
+    direccionFabricante: { type: 'string' },
+    telefonoEmergencia: { type: 'string' },
+    cantidadProducto: { type: 'string' },
+    pictogramas: {
+      type: 'array', uniqueItems: true,
+      items: { type: 'string', enum: ['GHS01', 'GHS02', 'GHS03', 'GHS04', 'GHS05', 'GHS06', 'GHS07', 'GHS08', 'GHS09'] }
+    },
+    evidencias: {
+      type: 'object', additionalProperties: false,
+      properties: Object.fromEntries([
+        'fabricante', 'telefonoFabricante', 'direccionFabricante',
+        'telefonoEmergencia', 'cantidadProducto', 'pictogramas'
+      ].map(key => [key, {
+        type: 'array',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: { pagina: { type: 'integer', minimum: 1 }, cita: { type: 'string' } },
+          required: ['pagina', 'cita']
+        }
+      }])),
+      required: ['fabricante', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'cantidadProducto', 'pictogramas']
+    },
+    revision: { type: 'array', items: { type: 'string' } }
+  },
+  required: [
+    'agenteQuimico', 'codigoUN', 'palabraAdvertencia', 'indicacionesPeligro',
+    'consejosPrudencia', 'fabricante', 'telefonoFabricante', 'direccionFabricante',
+    'telefonoEmergencia', 'cantidadProducto', 'pictogramas', 'evidencias', 'revision'
+  ]
+};
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: process.env.AI_BODY_LIMIT || '12mb' }));
@@ -116,7 +158,10 @@ app.post('/api/extract', rateLimit, async (req, res) => {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: req.body.content }
           ],
-          response_format: { type: 'json_object' },
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'tarjeta_seguridad_quimica', strict: true, schema: extractionSchema }
+          },
           temperature: 0,
           max_tokens: 5000
         })
