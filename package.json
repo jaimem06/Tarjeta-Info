@@ -1,0 +1,20 @@
+{
+  "name": "tarjetas-seguridad-quimica",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/copy-vendor.cjs && tailwindcss -c tailwind.config.cjs -i src/tailwind.css -o public/assets/css/tailwind.css --minify",
+    "start": "node server.js",
+    "test": "node tests/extraction.cjs && node tests/rate-limit.cjs && node tests/backend.cjs"
+  },
+  "dependencies": {
+    "express": "4.21.2"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17",
+    "pdfjs-dist": "3.11.174",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
+    "@fortawesome/fontawesome-free": "6.4.0",
+    "@fontsource/inter": "5.2.5"
+  }
+}

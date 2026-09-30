@@ -1,6 +1,6 @@
 // Initialize PDF.js worker URL
     if (window.pdfjsLib) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjsLib.GlobalWorkerOptions.workerSrc = './assets/vendor/pdfjs-dist/build/pdf.worker.min.js';
     }
 
     // Official Standard SGA / GHS Vector SVG Pictograms
@@ -103,24 +103,8 @@
       GHS09: { code: 'GHS09', name: 'Medio Ambiente' }
     };
 
-    const GHS_DRIVE_IDS = {
-      GHS01: '1-1_EdvYX5SNsBqtaJwddi5NQP7pUN85F',
-      GHS02: '13dxMluvO6JfNBoeXlEh9nvzkwTba9BZv',
-      GHS03: '17sy2eJnOjnUy15luTfMs7C0NogZ8RNCV',
-      GHS04: '1ChFLUHN0B1DoxVog3RFIrj-hmREXC2xC',
-      GHS05: '1FxTZhdWsIkqVj3NpHd-Kj6op301ocdg_',
-      GHS06: '1ZHQp2eU8Mjl1b0ZS7e9rVu9o60CwrVf1',
-      GHS07: '1agAsfVslgZfH5Iy2Ryf8yYyX5LQ4AiQf',
-      GHS08: '1fnM8vOXG_gUx2YM1orfuhwZpYOfq0Va4',
-      GHS09: '1l0yZCLfOYrSqN-TRNtFcPrxzgbPfA8tn'
-    };
-
     function getGhsImageSrc(code) {
-      const driveId = GHS_DRIVE_IDS[code];
-      if (driveId) {
-        return `https://lh3.googleusercontent.com/d/${driveId}`;
-      }
-      return generateGhsSvgDataUri(code);
+      return GHS_OFFICIAL_ITEMS[code] ? `./assets/images/ghs/${code}.png` : generateGhsSvgDataUri(code);
     }
 
     // Application State
@@ -269,6 +253,7 @@
     }
 
     async function handleFileSelect(event) {
+      if (extractionRunning) return;
       const file = event.target.files ? event.target.files[0] : (event.dataTransfer ? event.dataTransfer.files[0] : null);
       if (!file) return;
 
@@ -284,6 +269,14 @@
       try {
         if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
           uploadedFileData = await extractPagesAndImagesFromPDF(file);
+        } else if (/^image\/(png|jpeg)$/.test(file.type)) {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+          uploadedFileData = { text: '', images: [{ page: 1, inlineData: { mimeType: file.type, data: dataUrl.split(',')[1] } }] };
         } else {
           const txt = await file.text();
           uploadedFileData = { text: txt, images: [] };
@@ -299,66 +292,147 @@
       }
     }
 
-    async function extractPagesAndImagesFromPDF(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = '';
-      let pageImages = [];
-
-      const totalPages = pdf.numPages;
-      const maxTextPages = Math.min(totalPages, 15);
-      const maxImagePages = Math.min(totalPages, 4);
-
-      for (let i = 1; i <= maxTextPages; i++) {
-        showAIStatus(true, "Leyendo PDF...", `Procesando texto e imágenes de pág. ${i} de ${totalPages}...`);
-        await new Promise(r => setTimeout(r, 20));
-
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        let pageText = '';
-        let lastY = null;
-
-        for (const item of textContent.items) {
-          if (!item.str) continue;
-          const currentY = item.transform ? item.transform[5] : null;
-          if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 3.5) {
-            pageText += '\n';
-          } else if (pageText.length > 0 && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
-            pageText += ' ';
-          }
-          pageText += item.str;
-          lastY = currentY;
-        }
-
-        fullText += `=== SECCIÓN / PÁGINA ${i} ===\n` + pageText + '\n\n';
-
-        if (i <= maxImagePages) {
-          try {
-            const viewport = page.getViewport({ scale: 1.2 });
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-
-            await page.render({ canvasContext: context, viewport: viewport }).promise;
-            const base64Jpg = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
-            if (base64Jpg) {
-              pageImages.push({
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: base64Jpg
-                }
-              });
-            }
-          } catch (e) {
-            console.warn("No se pudo renderizar la página visual", i, e);
-          }
-        }
-      }
-      return { text: fullText, images: pageImages };
+    function pagePriority(page) {
+      const text = page.text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      let score = page.number <= 2 ? 20 : 0;
+      if (/fabricante|manufacturer|supplier|proveedor|emergency|emergencia|1\.3|1\.4/.test(text)) score += 15;
+      if (/pictogram|elementos de la etiqueta|label elements|2\.2/.test(text)) score += 15;
+      if (/contenido neto|net content|presentacion|tamano del envase|pack size|packaging size|cantidad de producto/.test(text)) score += 12;
+      if (text.trim().length < 80) score += 5;
+      return score;
     }
 
+    function compactPageText(page) {
+      // Keep the first two pages intact: contact tables and product label usually live here.
+      if (page.number <= 2) return page.text;
+      const lines = page.text.split('\n');
+      const keep = new Set();
+      const relevant = /fabricante\s*:|manufacturer\s*:|proveedor\s*:|supplier\s*:|emergencia|emergency|pictogram|contenido neto|net content|presentaci[oó]n|pack size|cantidad de producto|UN\s*[/:-]|UN\s*\d{4}|tel[eé]fono\s*:/i;
+      lines.forEach((line, index) => {
+        if (relevant.test(line)) {
+          for (let i = Math.max(0, index - 3); i <= Math.min(lines.length - 1, index + 6); i++) keep.add(i);
+        }
+      });
+      return [...keep].sort((a, b) => a - b).map((index, i, list) =>
+        (i && index > list[i - 1] + 1 ? '[…]\n' : '') + lines[index]).join('\n');
+    }
+
+    function buildDocumentContext(data, limit = 24000) {
+      const pages = data.pages || [{ number: 1, text: data.text || '' }];
+      const compactPages = pages.map(page => ({ ...page, text: compactPageText(page) }));
+      const ranked = [...compactPages].sort((a, b) => pagePriority(b) - pagePriority(a) || a.number - b.number);
+      const selected = [];
+      let remaining = limit;
+      for (const page of ranked) {
+        const header = `=== PÁGINA ${page.number} ===\n`;
+        if (remaining <= header.length) break;
+        const text = page.text.slice(0, remaining - header.length);
+        selected.push({ number: page.number, content: header + text, truncated: text.length < page.text.length });
+        remaining -= header.length + text.length;
+      }
+      selected.sort((a, b) => a.number - b.number);
+      const omitted = pages.filter(page => !selected.some(item => item.number === page.number)).map(page => page.number);
+      return selected.map(page => page.content + (page.truncated ? '\n[TEXTO RECORTADO]' : '')).join('\n\n') +
+        (omitted.length ? `\n[Páginas fuera del contexto de texto: ${omitted.join(', ')}]` : '');
+    }
+
+    async function extractPagesAndImagesFromPDF(file) {
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      const pages = [];
+      const images = [];
+      try {
+        // Read every page before selecting the most relevant visual evidence.
+        for (let number = 1; number <= pdf.numPages; number++) {
+          showAIStatus(true, 'Leyendo PDF...', `Extrayendo texto de página ${number} de ${pdf.numPages}...`);
+          const page = await pdf.getPage(number);
+          const content = await page.getTextContent();
+          let text = '', lastY = null;
+          for (const item of content.items) {
+            if (!item.str) continue;
+            const y = item.transform?.[5];
+            if (lastY !== null && y !== undefined && Math.abs(y - lastY) > 3.5) text += '\n';
+            else if (text && !text.endsWith('\n')) text += ' ';
+            text += item.str;
+            if (item.hasEOL) text += '\n';
+            lastY = y;
+          }
+          const anchors = content.items.filter(item => /pictogram/i.test(item.str || '')).map(item => item.transform[5]);
+          pages.push({ number, text, anchors });
+          page.cleanup();
+        }
+        // Text locates symbols; vision identifies them. Never infer a GHS code from a hazard phrase.
+        const pictogramPages = pages.filter(page => page.anchors.length > 0)
+          .sort((a, b) => a.number - b.number);
+        const scans = pages.filter(page => page.text.trim().length < 80);
+        const candidates = [...new Set([...pictogramPages, ...scans,
+          ...(pictogramPages.length ? [] : pages.slice(0, 2))])];
+        const selected = candidates.slice(0, 3).sort((a, b) => a.number - b.number);
+        for (const item of selected) {
+          showAIStatus(true, 'Leyendo PDF...', `Preparando imagen de página ${item.number}...`);
+          const page = await pdf.getPage(item.number);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: Math.min(2, 1800 / Math.max(base.width, base.height)) });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          let imageCanvas = canvas;
+          let region = 'página completa';
+          if (item.anchors.length) {
+            // Full-width band retains all symbols beside/under the label, regardless of column.
+            const ys = item.anchors.map(y => viewport.convertToViewportPoint(0, y)[1]);
+            const top = Math.max(0, Math.floor(Math.min(...ys) - 90 * viewport.scale));
+            const bottom = Math.min(canvas.height, Math.ceil(Math.max(...ys) + 150 * viewport.scale));
+            imageCanvas = document.createElement('canvas');
+            imageCanvas.width = canvas.width;
+            imageCanvas.height = Math.max(1, bottom - top);
+            imageCanvas.getContext('2d').drawImage(canvas, 0, top, canvas.width, imageCanvas.height,
+              0, 0, canvas.width, imageCanvas.height);
+            region = 'recorte de la zona de pictogramas; no representa toda la página';
+          }
+          images.push({ page: item.number, region, inlineData: {
+            mimeType: 'image/jpeg', data: imageCanvas.toDataURL('image/jpeg', 0.92).split(',')[1]
+          }});
+          if (imageCanvas !== canvas) imageCanvas.width = imageCanvas.height = 0;
+          canvas.width = canvas.height = 0;
+          page.cleanup();
+        }
+        const unpicturedScans = candidates.filter(page => !selected.includes(page));
+        return { pages, text: pages.map(page => page.text).join('\n\n'), images,
+          warning: unpicturedScans.length ? `Hay páginas candidatas sin analizar visualmente: ${unpicturedScans.map(page => page.number).join(', ')}. Revisa esas páginas antes de usar la tarjeta.` : '' };
+      } finally {
+        await pdf.destroy();
+      }
+    }
+
+    let extractionRunning = false;
+    let aiRetryAt = 0;
+
     async function processFDSWithAI() {
+      if (extractionRunning) return;
+      if (Date.now() < aiRetryAt) {
+        showAIStatus(false);
+        const box = document.getElementById('ai-error');
+        box.textContent = `Espera ${Math.ceil((aiRetryAt - Date.now()) / 1000)} segundos antes de volver a solicitar la extracción. El archivo sigue cargado.`;
+        box.hidden = false;
+        return;
+      }
+      extractionRunning = true;
+      const button = document.getElementById('btn-process-ai');
+      button.disabled = true;
+      try {
+        await extractFDSData();
+      } finally {
+        extractionRunning = false;
+        button.disabled = false;
+      }
+    }
+
+    async function extractFDSData() {
+      const errorBox = document.getElementById('ai-error');
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+      document.getElementById('ai-review').hidden = true;
       if (!uploadedFileData || (!uploadedFileData.text && uploadedFileData.images.length === 0)) {
         showAIStatus(true, "Archivo no válido", "Por favor seleccione un archivo FDS válido.");
         setTimeout(() => showAIStatus(false), 2000);
@@ -368,97 +442,79 @@
       showAIStatus(true, "Analizando datos con IA...", "Identificando pictogramas SGA, clasificación H/P y datos del producto...");
       await new Promise(r => setTimeout(r, 50));
 
-      const systemPrompt = `Eres un especialista internacional de primer nivel en Higiene Industrial, Seguridad Química y Fichas de Datos de Seguridad (FDS / SDS / MSDS) bajo el Sistema Globalmente Armonizado (SGA/GHS) (ISO 11014).
+      const documentContext = buildDocumentContext(uploadedFileData);
+      const userPromptText = `DOCUMENTO FDS CON PÁGINAS NUMERADAS:\n${documentContext}\n\nContrasta los datos con las imágenes adjuntas. Extrae todos los campos y sus evidencias. ${uploadedFileData.warning || ''}`;
 
-Tu misión es analizar minuciosamente el documento adjunto (tanto el texto estructurado como las imágenes visuales de las páginas de la FDS) para extraer exhaustivamente toda la información requerida en las tarjetas de seguridad química.
-
-REGLAS DE EXTRACCIÓN DETALLADAS POR CAMPO:
-
-1. "agenteQuimico":
-   - Nombre comercial o denominación química oficial de la sustancia o mezcla (Sección 1 / Encabezado).
-   - Elección principal en mayúsculas (ej. "ACETONA INDUSTRIAL", "ÁCIDO CLORHÍDRICO 37%").
-
-2. "codigoUN":
-   - Número de 4 dígitos UN en la Sección 14 o Sección 1/3 con sus componentes (ej. "UN 1090 | Acetona >99.5%").
-
-3. "palabraAdvertencia":
-   - Asigna ESTRICTAMENTE uno de estos tres valores: "PELIGRO", "ATENCIÓN", "SIN PALABRA DE ADVERTENCIA".
-
-4. "indicacionesPeligro":
-   - Frases H completas con sus códigos (ej. "H225: Líquido y vapores muy inflamables.\nH319: Provoca irritación ocular grave.").
-
-5. "consejosPrudencia":
-   - Frases P completas con sus códigos (ej. "P210: Mantener alejado del calor...\nP280: Llevar guantes de protección.").
-
-6. "fabricante":
-   - Solo el nombre del fabricante.
-   - Extrae por separado "telefonoFabricante", "direccionFabricante" y "telefonoEmergencia" de la sección 1.
-   - No confundas los teléfonos. Si un dato no consta, devuelve una cadena vacía; no lo inventes.
-
-7. "cantidadProducto":
-   - Formato o volumen del envase (ej. "Tambor 208 L", "Bidón 20 L", "Envase del proceso").
-
-8. "pictogramas":
-   - Array con los códigos de pictogramas SGA identificados: ["GHS01", "GHS02", "GHS03", "GHS04", "GHS05", "GHS06", "GHS07", "GHS08", "GHS09"].
-
-Devuelve ÚNICAMENTE un objeto JSON válido.`;
-
-      const truncatedText = uploadedFileData.text ? uploadedFileData.text.substring(0, 25000) : '';
-      const userPromptText = `DOCUMENTO FDS EXTRAÍDO:\n\n${truncatedText}\n\nPor favor analiza minuciosamente tanto el texto anterior como las imágenes adjuntas para extraer todos los campos requeridos en el JSON.`;
-
-      const messageParts = [{ text: userPromptText }];
-
-      if (uploadedFileData.images && uploadedFileData.images.length > 0) {
-        uploadedFileData.images.forEach(img => {
-          messageParts.push(img);
-        });
+      const messageParts = [{ type: 'text', text: userPromptText }];
+      for (const img of uploadedFileData.images || []) {
+        messageParts.push({ type: 'text', text: `Imagen de página ${img.page || 1} del documento (${img.region || 'página completa'})` });
+        messageParts.push({ type: 'image_url', image_url: {
+          url: `data:${img.inlineData.mimeType};base64,${img.inlineData.data}`
+        }});
       }
 
-      const apiKey = "AQ.Ab8RN6Icta-AnfBaugz4ySfu4AfznhcO5rpgbGJQqGdzY7wGtQ";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-      const payload = {
-        contents: [{ parts: messageParts }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              "agenteQuimico": { "type": "STRING" },
-              "palabraAdvertencia": { "type": "STRING" },
-              "codigoUN": { "type": "STRING" },
-              "indicacionesPeligro": { "type": "STRING" },
-              "consejosPrudencia": { "type": "STRING" },
-              "telefonoFabricante": { "type": "STRING" },
-              "direccionFabricante": { "type": "STRING" },
-              "telefonoEmergencia": { "type": "STRING" },
-              "fabricante": { "type": "STRING" },
-              "cantidadProducto": { "type": "STRING" },
-              "pictogramas": {
-                "type": "ARRAY",
-                "items": { "type": "STRING" }
-              }
-            },
-            required: ["agenteQuimico", "palabraAdvertencia", "codigoUN", "indicacionesPeligro", "consejosPrudencia", "fabricante", "telefonoFabricante", "direccionFabricante", "telefonoEmergencia", "pictogramas"]
-          }
-        }
-      };
+      const apiUrl = '/api/extract';
+      const payload = { content: messageParts };
 
       try {
         const response = await fetchWithRetry(apiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify(payload)
         });
 
         const result = await response.json();
-        const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (result.error) throw new Error(result.error.message || 'OpenRouter no pudo completar la solicitud.');
+        if (result.choices?.[0]?.finish_reason === 'length') throw new Error('La respuesta quedó incompleta. Vuelve a intentar la extracción.');
+        const jsonText = result.choices?.[0]?.message?.content;
 
         if (jsonText) {
           const parsed = JSON.parse(jsonText);
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('El modelo no devolvió una tarjeta válida.');
+          const fields = ['agenteQuimico', 'palabraAdvertencia', 'codigoUN', 'indicacionesPeligro', 'consejosPrudencia', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'fabricante', 'cantidadProducto'];
+          if (fields.some(field => typeof parsed[field] !== 'string') || !Array.isArray(parsed.pictogramas)) {
+            throw new Error('La respuesta del modelo no contiene todos los campos en el formato requerido. Vuelve a intentar la extracción.');
+          }
           const validGHS = ["GHS01", "GHS02", "GHS03", "GHS04", "GHS05", "GHS06", "GHS07", "GHS08", "GHS09"];
-          const filteredPictos = (parsed.pictogramas || []).filter(p => validGHS.includes(p.toUpperCase())).map(p => p.toUpperCase());
+          const filteredPictos = [...new Set((parsed.pictogramas || []).filter(p => typeof p === 'string' && validGHS.includes(p.toUpperCase())).map(p => p.toUpperCase()))];
+
+          const review = Array.isArray(parsed.revision) ? parsed.revision.filter(item => typeof item === 'string') : [];
+          if (uploadedFileData.warning) review.push(uploadedFileData.warning);
+          const labels = { fabricante: 'Nombre del fabricante', telefonoFabricante: 'Teléfono del fabricante', direccionFabricante: 'Dirección', telefonoEmergencia: 'Teléfono de emergencia', cantidadProducto: 'Cantidad de producto', pictogramas: 'Pictogramas' };
+          for (const [field, label] of Object.entries(labels)) {
+            const evidence = parsed.evidencias?.[field];
+            const supported = Array.isArray(evidence) && evidence.some(item =>
+              Number.isInteger(item.pagina) && item.pagina > 0 &&
+              item.pagina <= (uploadedFileData.pages?.length || 1) &&
+              typeof item.cita === 'string' && item.cita.trim());
+            if (field === 'pictogramas' && supported) {
+              for (let i = filteredPictos.length - 1; i >= 0; i--) {
+                const code = filteredPictos[i];
+                if (!evidence.some(item => Number.isInteger(item.pagina) && item.pagina > 0 &&
+                    item.pagina <= (uploadedFileData.pages?.length || 1) &&
+                    typeof item.cita === 'string' && item.cita.toUpperCase().includes(code))) {
+                  filteredPictos.splice(i, 1);
+                  review.push(`${code}: sin evidencia individual; comprueba el pictograma en la sección 2.`);
+                }
+              }
+            }
+            if (!supported) {
+              if (field === 'pictogramas') filteredPictos.length = 0;
+              else parsed[field] = '';
+              review.push(`${label}: sin evidencia verificable; revisa el documento o completa el dato manualmente.`);
+            }
+          }
+          for (const field of ['fabricante', 'telefonoFabricante', 'direccionFabricante', 'telefonoEmergencia', 'cantidadProducto']) {
+            if (/<[^>]+>|^x{2,}$|^[-_.\s]+$/i.test(parsed[field])) {
+              parsed[field] = '';
+              review.push(`${labels[field]}: el documento contiene un marcador de plantilla, no un dato real.`);
+            }
+          }
+          const reviewBox = document.getElementById('ai-review');
+          reviewBox.textContent = [...new Set(review)].join('\n');
+          reviewBox.hidden = !reviewBox.textContent;
 
           currentData = {
             agenteQuimico: parsed.agenteQuimico || "",
@@ -482,8 +538,9 @@ Devuelve ÚNICAMENTE un objeto JSON válido.`;
         }
       } catch (err) {
         console.error("Error al procesar con IA:", err);
-        showAIStatus(true, "Error en Extracción", "No se pudo extraer la información. Verifique el archivo FDS.");
-        setTimeout(() => showAIStatus(false), 3000);
+        showAIStatus(false);
+        errorBox.textContent = err.message;
+        errorBox.hidden = false;
       }
     }
 
@@ -624,6 +681,8 @@ Devuelve ÚNICAMENTE un objeto JSON válido.`;
     }
 
     function resetForm() {
+      document.getElementById('ai-review').hidden = true;
+      document.getElementById('ai-error').hidden = true;
       currentData = {
         agenteQuimico: '',
         codigoUN: '',
@@ -703,14 +762,54 @@ Devuelve ÚNICAMENTE un objeto JSON válido.`;
       }
     }
 
-    async function fetchWithRetry(url, options, retries = 2, backoff = 1000) {
+    async function fetchWithRetry(url, options, retries = 3, backoff = 5000) {
       try {
         const res = await fetch(url, options);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res;
+        if (res.ok) return res;
+        const body = await res.json().catch(() => null);
+        const reason = body?.error?.code;
+        const detail = [body?.error?.message, reason].filter(Boolean).join(' — ');
+        let message = `OpenRouter devolvió HTTP ${res.status}${detail ? ': ' + detail : '.'}`;
+        if (res.status === 401) {
+          message = `OpenRouter rechazó la credencial (401${reason ? ': ' + reason : ''}). Revisa o reemplaza la clave en OpenRouter. No es un error del archivo FDS.`;
+        } else if (res.status === 403) {
+          message = `OpenRouter denegó el acceso (403). Revisa los permisos y restricciones de la clave. ${detail}`;
+        }
+        if (res.status === 402) message = 'OpenRouter rechazó la solicitud gratuita (402). Revisa las restricciones o el saldo de la cuenta en OpenRouter. La aplicación usa un modelo gratuito y no cambia a modelos de pago.';
+        if (res.status === 429) {
+          const provider = body?.error?.metadata?.provider_name;
+          message = provider
+            ? `El proveedor ${provider} limita temporalmente este modelo gratuito (429). El archivo sigue cargado. Inténtalo más tarde.`
+            : 'OpenRouter alcanzó un límite de solicitudes gratuitas (429). El archivo sigue cargado. Espera a que se restablezca el cupo.';
+        }
+        if (res.status === 503) {
+          message = 'OpenRouter está temporalmente saturado (503). El archivo sigue cargado. Espera unos minutos y pulsa «Extraer con IA» para volver a intentarlo.';
+        }
+        const error = new Error(message);
+        error.status = res.status;
+        const retryAfter = res.headers.get('Retry-After');
+        const retrySeconds = Number(retryAfter);
+        const headerDelay = retryAfter === null ? 0 : (Number.isFinite(retrySeconds)
+          ? retrySeconds * 1000 : Date.parse(retryAfter) - Date.now());
+        error.retryDelay = Math.max(0, headerDelay || 0);
+        if (res.status === 429) {
+          const resetRaw = res.headers.get('X-RateLimit-Reset') || body?.error?.metadata?.headers?.['X-RateLimit-Reset'];
+          const reset = Number(resetRaw);
+          const resetAt = Number.isFinite(reset) && reset > 0 ? (reset < 1e12 ? reset * 1000 : reset) : 0;
+          aiRetryAt = Math.max(Date.now() + Math.max(error.retryDelay, 60000), resetAt);
+          error.message += ' No se harán reintentos automáticos.';
+        }
+        throw error;
       } catch (err) {
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, backoff));
+        const retryable = err.status >= 500 || (!err.status && err instanceof TypeError);
+        if (retryable && retries > 0) {
+          const delay = Math.max(backoff + Math.floor(Math.random() * 1000), err.retryDelay || 0);
+          // Leave very long waits to a manual retry instead of blocking the interface.
+          if (delay > 60000) throw err;
+          showAIStatus(true, 'OpenRouter no está disponible temporalmente',
+            `Reintentando en ${Math.ceil(delay / 1000)} segundos. Reintentos restantes: ${retries}.`);
+          await new Promise(r => setTimeout(r, delay));
+          showAIStatus(true, 'Analizando datos con IA...', 'Reintentando la solicitud a OpenRouter...');
           return fetchWithRetry(url, options, retries - 1, backoff * 2);
         }
         throw err;

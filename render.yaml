@@ -1,6 +1,19 @@
 services:
   - type: web
-    name: tarjetas-seguridad-quimica
-    runtime: static
-    buildCommand: ""
-    staticPublishPath: ./public
+    name: tarjetas-seguridad-quimica-app
+    runtime: node
+    plan: free
+    buildCommand: npm ci --ignore-scripts && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: PRIMARY_AI_MODEL
+        value: google/gemini-2.5-flash-lite
+      - key: FALLBACK_AI_MODEL
+        value: openai/gpt-4.1-mini
+      - key: AI_REQUESTS_PER_HOUR
+        value: "30"
+      - key: PORT
+        value: "10000"

@@ -6,24 +6,24 @@
   <title>Generador de Tarjeta de Seguridad Química - SGA/GHS</title>
   
   <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./assets/css/tailwind.css">
   
   <!-- PDF.js for reading uploaded SDS PDFs -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="./assets/vendor/pdfjs-dist/build/pdf.min.js"></script>
   
   <!-- html2canvas & jsPDF for PDF generation -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="./assets/vendor/html2canvas/dist/html2canvas.min.js"></script>
+  <script src="./assets/vendor/jspdf/dist/jspdf.umd.min.js"></script>
   
   <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="./assets/vendor/@fortawesome/fontawesome-free/css/all.min.css">
   
-  <!-- Google Fonts Inter -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
-  <script src="./assets/js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-400.css">
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-500.css">
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-600.css">
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-700.css">
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-800.css">
+  <link rel="stylesheet" href="./assets/vendor/@fontsource/inter/latin-900.css">
 
   <link rel="stylesheet" href="./assets/css/styles.css">
 
@@ -96,6 +96,8 @@
           </button>
         </div>
         
+        <p id="ai-review" role="status" hidden class="mt-2 text-xs text-amber-800 whitespace-pre-line break-words"></p>
+        <p id="ai-error" role="alert" hidden class="mt-2 text-xs text-red-700 break-words"></p>
         <div id="ai-status" class="hidden mt-2 text-[11px] text-center py-1.5 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">
           <i class="fa-solid fa-circle-notch fa-spin text-red-600 mr-1.5"></i>
           <span id="ai-status-text">Procesando archivo...</span>
