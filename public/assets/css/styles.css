@@ -63,10 +63,11 @@ button, #drop-zone { touch-action: manipulation; }
 #card-middle { height: 100%; margin: 0; padding-block: 12px; }
 #card-bottom { height: 108px; }
 #card-statements { min-height: 0; overflow: hidden; justify-content: space-between; }
-#card-statements > div { flex-shrink: 0; }
+#card-statements > div { flex-shrink: 0; width: 100%; }
 #card-statements > div + div { margin-top: 0 !important; }
+#card-indicaciones, #card-consejos { width: 100%; max-width: none; }
 #card-agente, #card-un, #card-palabra, #card-indicaciones, #card-consejos,
-#card-cantidad, .manufacturer-details { transition: font-size 0.12s ease, line-height 0.12s ease; }
+#card-cantidad, .manufacturer-details { transition: none; }
 .manufacturer-details { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 3px 8px; margin-top: 6px; font-size: 11px; line-height: 1.35; }
 .manufacturer-details dt { font-weight: 600; }
 .manufacturer-details dd { margin: 0; font-weight: 800; white-space: pre-wrap; }

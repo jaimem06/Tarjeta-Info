@@ -603,12 +603,42 @@
       });
     }
 
+    function formatStatementsForCard(value) {
+      const lines = String(value || '')
+        .replace(/\r/g, '')
+        .split('\n')
+        .map(line => line.trim());
+      const statementStart = /^(?:[•*-]\s*)?(?:(?:EUH|[HP])\d{3}[A-Z]?)(?:\s*\+\s*(?:(?:EUH|[HP])\d{3}[A-Z]?))*/i;
+      const statements = [];
+      let current = '';
+
+      for (const line of lines) {
+        if (!line) {
+          if (current) {
+            statements.push(current);
+            current = '';
+          }
+          continue;
+        }
+
+        if (statementStart.test(line)) {
+          if (current) statements.push(current);
+          current = line;
+        } else {
+          current = current ? `${current} ${line}` : line;
+        }
+      }
+
+      if (current) statements.push(current);
+      return statements.join('\n');
+    }
+
     function renderCardPreview() {
       document.getElementById('card-agente').textContent = currentData.agenteQuimico;
       document.getElementById('card-un').textContent = currentData.codigoUN;
       document.getElementById('card-palabra').textContent = currentData.palabraAdvertencia;
-      document.getElementById('card-indicaciones').textContent = currentData.indicacionesPeligro;
-      document.getElementById('card-consejos').textContent = currentData.consejosPrudencia;
+      document.getElementById('card-indicaciones').textContent = formatStatementsForCard(currentData.indicacionesPeligro);
+      document.getElementById('card-consejos').textContent = formatStatementsForCard(currentData.consejosPrudencia);
       document.getElementById('card-telefonoFabricante').textContent = currentData.telefonoFabricante || '';
       document.getElementById('card-direccionFabricante').textContent = currentData.direccionFabricante || '';
       document.getElementById('card-telefonoEmergencia').textContent = currentData.telefonoEmergencia || '';
@@ -693,12 +723,13 @@
 
       const availableHeight = getInnerHeight(container);
       const measure = options.measure || measureTallestColumn;
-      const fits = () => measure(container) <= availableHeight + 1;
+      const safetyMargin = options.safetyMargin || 0;
+      const fits = () => measure(container) <= availableHeight - safetyMargin;
 
       // Keep the normal, readable size whenever the content already fits.
       setGroupMetrics(entries, 1, options.lineHeight, options.minLineHeight);
       const requiredAtBaseSize = measure(container);
-      if (requiredAtBaseSize <= availableHeight + 1) return true;
+      if (fits()) return true;
 
       // The first reduction follows a non-linear density curve. A binary search
       // then finds the largest readable size that actually fits in the browser.
@@ -771,7 +802,12 @@
       fitGroupToContent(bottom, [
         { element: manufacturer, baseSize: 11, minSize: 8 },
         { element: document.getElementById('card-cantidad'), baseSize: 12, minSize: 8 }
-      ], { minScale: 2 / 3, lineHeight: 1.35, minLineHeight: 1.08 });
+      ], {
+        minScale: 2 / 3,
+        lineHeight: 1.35,
+        minLineHeight: 1.08,
+        safetyMargin: 2
+      });
     }
     window.addEventListener('resize', fitCardContent);
     document.fonts.ready.then(fitCardContent);
