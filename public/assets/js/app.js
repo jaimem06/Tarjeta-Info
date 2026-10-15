@@ -894,6 +894,7 @@
       try {
         await document.fonts.ready;
         fitCardContent();
+        document.body.classList.add('pdf-exporting');
         const canvas = await html2canvas(card, {
           scale: 3, // High DPI capture
           useCORS: true,
@@ -923,6 +924,7 @@
         showAIStatus(true, "Error al exportar PDF: " + err.message);
         setTimeout(() => showAIStatus(false), 4000);
       } finally {
+        document.body.classList.remove('pdf-exporting');
         // Restore responsive transform
         preview.style.display = savedDisplay;
         card.style.transform = savedTransform;

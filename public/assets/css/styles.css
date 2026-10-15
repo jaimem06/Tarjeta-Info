@@ -72,6 +72,9 @@ button, #drop-zone { touch-action: manipulation; }
 .manufacturer-details dt { font-weight: 600; }
 .manufacturer-details dd { margin: 0; font-weight: 800; white-space: pre-wrap; }
 
+/* html2canvas measures font baselines with an inline image appended to body.
+   Tailwind's global display:block on images makes that baseline too low. */
+body.pdf-exporting > div > img { display: inline-block; }
 
 .ghs-official-pictogram {
   display: flex;
